@@ -1,8 +1,18 @@
-#!usr/bin/env python
+#!/usr/bin/python
 
 import argparse
 import os
 import time
+import glob
+import sys
+
+MESOS_ROOT="/opt/mesos-0.27.2/build"
+PROTOBUF_PATH = MESOS_ROOT + "/3rdparty/libprocess/3rdparty/protobuf-2.5.0/python/"
+for egg in glob.glob(os.path.join(MESOS_ROOT,'src','python','dist','*.egg')):
+  sys.path.append(os.path.abspath(egg))
+
+for egg in glob.glob(os.path.join(PROTOBUF_PATH,'dist','*.egg')):
+  sys.path.append(os.path.abspath(egg))
 
 import mesos.interface
 from mesos.interface import mesos_pb2
@@ -13,14 +23,15 @@ class SingaScheduler(mesos.interface.Scheduler):
     self.implicitAcknowledgements = implicitAcknowledgements
     self.executor = executor
     self.required_cpu = args.CPU
-    self.requried_mem = args.MEM
+    self.required_mem = args.MEM
+    self.required_port = args.PORT
     self.url = args.url
     self.frameworkID = ""
     self.taskID = ""
   
   def registered(self, driver, frameworkID, masterInfo):
     self.frameworkID = frameworkID.value
-    self.taskID = slef.frameworkID + "_task_0"
+    self.taskID = self.frameworkID + "_task_0"
     print "Registered with framework ID %s" % frameworkID.value
 
   def resourceOffers(self, driver, offers):
@@ -28,7 +39,7 @@ class SingaScheduler(mesos.interface.Scheduler):
     for offer in offers:
       print "Framework gets offer %s" % offer
       if not hasAccepted:
-        if tryOffer(offer):
+        if self.tryOffer(offer):
           print "Accept offer %s" % offer
       else:
         driver.declineOffer(offer.id)
@@ -37,25 +48,36 @@ class SingaScheduler(mesos.interface.Scheduler):
   def tryOffer(self, offer):
     offerCPUs = 0
     offerMEMs = 0
+    offerPortBegin = 0
+    offerPortEnd = 0
+
     for resource in offer.resources:
       if resource.name == "cpus":
         offerCPUs += resource.scalar.value
       elif resource.name == "mem":
         offerMEMs += resource.scalar.value
+      elif resource.name == "ports":
+        offerPortBegin = resource.ranges.range[0].begin
+	offerPortEnd = resource.ranges.range[0].end
 
     if offerCPUs >= self.required_cpu and offerMEMs >= self.required_mem:
+       #and offerPortBegin >= offerPortEnd and offerPortBegin > 0:
       print "Launching task using offer %s" % offer.id.value
       task = mesos_pb2.TaskInfo()
       container = mesos_pb2.ContainerInfo()
-      ccontainer.type = mesos_pb2.ContainerInfo.Type.DOCKER
+      container.type = mesos_pb2.ContainerInfo.DOCKER
+
+      print "using port %s to %s" % (offerPortBegin, offerPortEnd)
 
       volume = container.volumes.add()
       volume.container_path = "/workspace"
       volume.host_path = "/var/opt/docer_singa_wokerspace/"+self.taskID
-      volume.mode = mesos_pb2.Volume.Mode.RW
+      volume.mode = mesos_pb2.Volume.RW
 
       command = mesos_pb2.CommandInfo()
-      command.value = "/usr/src/incubator-singa/examples/cifar10_mesos/entry.sh"
+      command.value = "/bin/bash /usr/src/incubator-singa/examples/cifar10_mesos/entry.sh " \
+                      + self.url
+#      command.value = "/usr/bin/python -m SimpleHTTPServer 80"
       task.command.MergeFrom(command)
 
       task.task_id.value = self.taskID
@@ -74,7 +96,19 @@ class SingaScheduler(mesos.interface.Scheduler):
 
       docker = mesos_pb2.ContainerInfo.DockerInfo()
       docker.image = "singa:latest"
-      docker.network = mesos_pb2.ContainerInfo.Network.BRIDGE
+      docker.network = mesos_pb2.ContainerInfo.DockerInfo.BRIDGE
+
+      ports = task.resources.add()
+      ports.name = "ports"
+      ports.type = mesos_pb2.Value.RANGES
+      ports_range = ports.ranges.range.add()
+      #ports_range.begin = 31001
+      #ports_range.end = 31001
+      ports_range.begin = offerPortBegin
+      ports_range.end = offerPortBegin
+      docker_port = docker.port_mappings.add()
+      docker_port.host_port = offerPortBegin
+      docker_port.container_port = self.required_port
 
       container.docker.MergeFrom(docker)
       task.container.MergeFrom(container)
@@ -103,7 +137,7 @@ class SingaScheduler(mesos.interface.Scheduler):
        update.state == mesos_pb2.TASK_KILLED or \
        update.state == mesos_pb2.TASK_FAILED:
       print "Aborting because task %s is in unexpected state %s with message '%s'" \
-        % (update.task_id.value, mesos_pb2.TaskState.Name(update.state), update.messag)
+        % (update.task_id.value, mesos_pb2.TaskState.Name(update.state), update.message)
       driver.abort()
 
     if not self.implicitAcknowledgements:
@@ -118,6 +152,8 @@ if __name__ == "__main__":
       help="Number of CPUs requried to launch this job (default: 1)")
   parser.add_argument("--MEM", required=True, default=512, type=int,
       help="Total memory size requried to launch this job in MB (default: 512)")
+  parser.add_argument("--PORT", required=True, type=int,
+      help="Required Port in container")
   parser.add_argument("--url", required=True, type=str,
       help="URL for downloading the workspace folder content")
 
