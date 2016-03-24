@@ -71,7 +71,7 @@ class SingaScheduler(mesos.interface.Scheduler):
 
       volume = container.volumes.add()
       volume.container_path = "/workspace"
-      volume.host_path = "/var/opt/docer_singa_wokerspace/"+self.taskID
+      volume.host_path = "/var/opt/docker_singa_wokerspace/"+self.taskID
       volume.mode = mesos_pb2.Volume.RW
 
       command = mesos_pb2.CommandInfo()
