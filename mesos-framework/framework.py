@@ -26,6 +26,7 @@ class SingaScheduler(mesos.interface.Scheduler):
     self.required_mem = args.MEM
     self.required_port = args.PORT
     self.url = args.url
+    self.mode = args.mode
     self.frameworkID = ""
     self.taskID = ""
   
@@ -75,8 +76,9 @@ class SingaScheduler(mesos.interface.Scheduler):
       volume.mode = mesos_pb2.Volume.RW
 
       command = mesos_pb2.CommandInfo()
-      command.value = "/bin/bash /usr/src/incubator-singa/examples/cifar10_mesos/entry.sh " \
-                      + self.url
+      command.value = "/bin/bash /usr/src/incubator-singa/examples/cifar10_mesos/entry.sh "
+                      + self.url + " "
+                      + self.mode
 #      command.value = "/usr/bin/python -m SimpleHTTPServer 80"
       task.command.MergeFrom(command)
 
@@ -156,6 +158,8 @@ if __name__ == "__main__":
       help="Required Port in container")
   parser.add_argument("--url", required=True, type=str,
       help="URL for downloading the workspace folder content")
+  parser.add_argument("--mode", required=True, type=int,
+      help="Running mode(1 or 2): 1 for train or 2 for product")
 
   args = parser.parse_args()
 
