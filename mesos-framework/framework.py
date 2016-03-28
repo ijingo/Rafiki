@@ -158,7 +158,7 @@ if __name__ == "__main__":
       help="Required Port in container")
   parser.add_argument("--url", required=True, type=str,
       help="URL for downloading the workspace folder content")
-  parser.add_argument("--mode", required=True, type=int,
+  parser.add_argument("--mode", required=True, type=str,
       help="Running mode(1 or 2): 1 for train or 2 for product")
 
   args = parser.parse_args()
